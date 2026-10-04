@@ -1,0 +1,115 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# OmniWM installer — installs OmniWM (Homebrew cask) and writes a tuned
+# niri-style scrolling-tiling configuration to ~/.config/omniwm/settings.toml.
+#
+# Usage:
+#   ./install [--config FILE] [--non-interactive] [--force] [--skip-install]
+#             [--no-start-at-login] [--dry-run]
+set -u
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export ROOT_DIR
+
+. "$ROOT_DIR/lib/common.sh"
+. "$ROOT_DIR/lib/checks.sh"
+. "$ROOT_DIR/lib/install.sh"
+. "$ROOT_DIR/lib/arrange.sh"
+. "$ROOT_DIR/lib/configure.sh"
+. "$ROOT_DIR/lib/integrate.sh"
+. "$ROOT_DIR/lib/guide.sh"
+
+usage() {
+    cat <<EOF
+Usage: $0 [options]
+
+Configures OmniWM for niri-style scrolling tiling.
+
+Options:
+  --config FILE         Load override values from FILE (KEY=value), on top of
+                        config/niri.conf.
+  --non-interactive     Never prompt; use config defaults for anything unset.
+  --force               Overwrite an existing settings.toml (backed up first).
+  --skip-install        Skip the Homebrew cask install (config-only run).
+  --no-start-at-login   Do not install the start-at-login launchd agent.
+  --dry-run             Print what would happen without changing anything.
+  -h, --help            Show this help.
+EOF
+}
+
+# --- flags --------------------------------------------------------------------
+USER_CONFIG=""
+SKIP_INSTALL=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --config)          USER_CONFIG="$2"; shift 2 ;;
+        --config=*)        USER_CONFIG="${1#*=}"; shift ;;
+        --non-interactive|-y) NON_INTERACTIVE=1; shift ;;
+        --force)           FORCE=1; shift ;;
+        --skip-install)    SKIP_INSTALL=1; shift ;;
+        --no-start-at-login) START_AT_LOGIN=false; shift ;;
+        --dry-run)         DRY_RUN=1; shift ;;
+        -h|--help)         usage; exit 0 ;;
+        *)                 err "Unknown option: $1"; usage; exit 2 ;;
+    esac
+done
+
+# --- config -------------------------------------------------------------------
+# Load the built-in preset, then any user overrides.
+load_config "$DEFAULT_CONFIG" \
+    || die "Missing built-in preset: $DEFAULT_CONFIG"
+if [ -n "$USER_CONFIG" ]; then
+    if [ -f "$USER_CONFIG" ]; then
+        load_config "$USER_CONFIG"
+        ok "Loaded overrides from $USER_CONFIG"
+    else
+        die "Config file not found: $USER_CONFIG"
+    fi
+fi
+
+# --- interactive fallback -----------------------------------------------------
+# Only prompt when running interactively and no explicit config file was given.
+if [ "$NON_INTERACTIVE" -eq 0 ] && [ -z "$USER_CONFIG" ]; then
+    step "Configuration"
+    if confirm "Use the built-in niri preset (config/niri.conf)?" y; then
+        info "Using preset defaults."
+    else
+        printf "${c_bold}Visible containers (columns)${c_reset} [${NIRI_VISIBLE_CONTAINER_COUNT}]: "
+        read -r ans </dev/tty || ans=""
+        [ -n "$ans" ] && NIRI_VISIBLE_CONTAINER_COUNT="$ans"
+
+        printf "${c_bold}Inner gap in points${c_reset} [${GAPS_SIZE}]: "
+        read -r ans </dev/tty || ans=""
+        [ -n "$ans" ] && GAPS_SIZE="$ans"
+
+        printf "${c_bold}Border width${c_reset} [${BORDER_WIDTH}]: "
+        read -r ans </dev/tty || ans=""
+        [ -n "$ans" ] && BORDER_WIDTH="$ans"
+
+        printf "${c_bold}Default layout (niri|dwindle)${c_reset} [${GENERAL_DEFAULT_LAYOUT_TYPE}]: "
+        read -r ans </dev/tty || ans=""
+        [ -n "$ans" ] && GENERAL_DEFAULT_LAYOUT_TYPE="$ans"
+    fi
+    printf "${c_bold}Start at login?${c_reset} [y/N]: "
+    read -r ans </dev/tty || ans=""
+    case "$ans" in [yY]|[yY][eE][sS]) START_AT_LOGIN=true ;; esac
+fi
+
+# --- run ----------------------------------------------------------------------
+printf "${c_bold}${c_cyan}OmniWM installer${c_reset}  (dry-run=${DRY_RUN}, force=${FORCE})\n"
+
+checks_run
+
+if [ "$SKIP_INSTALL" -eq 1 ]; then
+    ok "Skipping install (--skip-install)."
+else
+    install_run
+fi
+
+arrange_run
+configure_run
+integrate_run
+guide_run
+
+echo
+ok "Finished. Launch $APP_NAME from /Applications to complete first-run setup."

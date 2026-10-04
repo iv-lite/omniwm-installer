@@ -1,0 +1,55 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# OmniWM uninstaller — quits the app, removes the launch agent, uninstalls the
+# cask, and optionally purges config, state, and TCC permissions.
+#
+# Usage:
+#   ./uninstall [--purge] [--keep-config] [--purge-permissions]
+#               [--non-interactive] [--dry-run]
+set -u
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export ROOT_DIR
+
+. "$ROOT_DIR/lib/common.sh"
+. "$ROOT_DIR/lib/uninstall.sh"
+
+usage() {
+    cat <<EOF
+Usage: $0 [options]
+
+Uninstalls OmniWM.
+
+Options:
+  --purge              Remove config (~/.config/omniwm), state, and app-support.
+  --keep-config        Keep ~/.config/omniwm even when --purge is given.
+  --purge-permissions  Reset Accessibility/InputMonitoring/ScreenRecording grants.
+  --non-interactive    Never prompt.
+  --dry-run            Print what would happen without changing anything.
+  -h, --help           Show this help.
+EOF
+}
+
+PURGE=0
+KEEP_CONFIG=0
+PURGE_PERMISSIONS=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --purge)            PURGE=1; shift ;;
+        --keep-config)      KEEP_CONFIG=1; shift ;;
+        --purge-permissions) PURGE_PERMISSIONS=1; shift ;;
+        --non-interactive|-y) NON_INTERACTIVE=1; shift ;;
+        --dry-run)          DRY_RUN=1; shift ;;
+        -h|--help)          usage; exit 0 ;;
+        *)                  err "Unknown option: $1"; usage; exit 2 ;;
+    esac
+done
+
+printf "${c_bold}${c_red}OmniWM uninstaller${c_reset}  (dry-run=${DRY_RUN}, purge=${PURGE})\n"
+
+if [ "$NON_INTERACTIVE" -eq 0 ]; then
+    confirm "Uninstall $APP_NAME and remove it from Homebrew?" y \
+        || die "Aborted."
+fi
+
+uninstall_run
